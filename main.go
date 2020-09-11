@@ -35,21 +35,18 @@ func main() {
 func handleConnection(c net.Conn) {
 	fmt.Printf("Serving %s\n", c.RemoteAddr().String())
 
-	data := make([]byte, 0)
 	for {
 		buf := make([]byte, 1024)
+
 		lengthPer, err := bufio.NewReader(c).Read(buf)
+		buf = buf[:lengthPer]
+		temp := strings.TrimSpace(string(buf))
+		fmt.Println("hex==> ", hex.EncodeToString(buf))
+		fmt.Println("string ==>>", temp)
 		if err != nil {
-			data = append(data, buf[0:lengthPer]...)
 			fmt.Println(err)
 			break
 		}
-		data = append(data, buf[0:lengthPer]...)
 	}
-	temp := strings.TrimSpace(string(data))
-	fmt.Println(time.Now().Format("[2006-01-02 15:04:05]"))
-	fmt.Println("hex==> ", hex.EncodeToString(data))
-	fmt.Println("string ==>>", temp)
-
 	c.Close()
 }
