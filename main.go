@@ -4,16 +4,20 @@ import (
 	"bufio"
 	"encoding/hex"
 	"fmt"
-	"github.com/gorilla/websocket"
-	uuid "github.com/satori/go.uuid"
 	"math/rand"
 	"net"
 	"net/http"
 	"strings"
+	"tcp-server/influxd"
 	"time"
+	client "github.com/influxdata/influxdb1-client"
+	"github.com/gorilla/websocket"
+	uuid "github.com/satori/go.uuid"
 )
 
 func main() {
+
+	influxd.Init()
 
 	PORT := ":9001"
 	l, err := net.Listen("tcp4", PORT)
@@ -43,6 +47,8 @@ func main() {
 func handleConnection(c net.Conn, wbMap *map[string]*websocket.Conn) {
 	fmt.Printf("Serving %s\n", c.RemoteAddr().String())
 
+	con := influxd.GetInfluxCli()
+
 	for {
 		buf := make([]byte, 1024)
 
@@ -60,6 +66,32 @@ func handleConnection(c net.Conn, wbMap *map[string]*websocket.Conn) {
 		if err != nil {
 			fmt.Println(err)
 			break
+		} else {
+			field := make(map[string]interface{})
+			field["origin_data"] = temp
+			tags := make(map[string]string)
+
+			pts := make([]client.Point, 0)
+			var point client.Point
+			point = client.Point{
+				Measurement: "test",
+				Tags: tags,
+				Fields:      field,
+				Time:        time.Now(),
+				Precision:   "s",
+			}
+			pts = append(pts, point)
+
+			bps := client.BatchPoints{
+				Points:    pts,
+				Database:  "tcp_server",
+				Precision: "s",
+			}
+			_, err = con.Write(bps)
+			if err != nil {
+				fmt.Println(err)
+			}
+
 		}
 
 	}
