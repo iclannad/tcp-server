@@ -29,23 +29,29 @@ func main() {
 	rand.Seed(time.Now().Unix())
 
 	wbMap := make(map[string]*websocket.Conn)
+	tcpMap := make(map[string]net.Conn)
 
 	// websocket server
-	go httpStart(&wbMap)
+	go httpStart(&wbMap,&tcpMap)
 
-	// tcp server
 	for {
 		c, err := l.Accept()
 		if err != nil {
 			fmt.Println(err)
 			return
 		}
-		go handleConnection(c, &wbMap)
+		go handleConnection(c, &wbMap,&tcpMap)
 	}
 }
 
-func handleConnection(c net.Conn, wbMap *map[string]*websocket.Conn) {
+func handleConnection(c net.Conn, wbMap *map[string]*websocket.Conn,tcpMap *map[string]net.Conn) {
 	fmt.Printf("Serving %s\n", c.RemoteAddr().String())
+
+	// add tcp socket conn to list
+	v4, _ := uuid.NewV4()
+	key := v4.String()
+	(*tcpMap)[key] = c
+
 
 	con := influxd.GetInfluxCli()
 
@@ -96,9 +102,11 @@ func handleConnection(c net.Conn, wbMap *map[string]*websocket.Conn) {
 
 	}
 	c.Close()
+	// remove tcp socket conn from list
+	delete(*tcpMap, key)
 }
 
-func httpStart(wbMap *map[string]*websocket.Conn) {
+func httpStart(wbMap *map[string]*websocket.Conn,tcpMap *map[string]net.Conn) {
 	http.HandleFunc("/websocket", func(w http.ResponseWriter, r *http.Request) {
 		var upgrader = websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool {
@@ -128,6 +136,12 @@ func httpStart(wbMap *map[string]*websocket.Conn) {
 				break
 			}
 			fmt.Println("websocket receive ==>> ", time.Now().Format("[2006-01-02 15:04:05]"), " ", msgType, strings.TrimSpace(string(data)))
+			// send msg to device
+			for _, v := range *tcpMap {
+				if v != nil {
+					v.Write(data)
+				}
+			}
 		}
 
 	})
