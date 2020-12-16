@@ -63,9 +63,12 @@ func handleConnection(c net.Conn, wbMap *map[string]*websocket.Conn,tcpMap *map[
 		temp := strings.TrimSpace(string(buf))
 		fmt.Println("tcp receive ==>> ", time.Now().Format("[2006-01-02 15:04:05]"), " ", "hex==> ", hex.EncodeToString(buf), " ", "string ==>>", temp)
 
+		dst := make([]byte, hex.EncodedLen(len(buf)))
+		hex.Encode(dst, buf)
+
 		for _, v := range *wbMap {
 			if v != nil {
-				v.WriteMessage(1, buf)
+				v.WriteMessage(1, dst)
 			}
 		}
 
