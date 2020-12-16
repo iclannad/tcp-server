@@ -136,10 +136,14 @@ func httpStart(wbMap *map[string]*websocket.Conn,tcpMap *map[string]net.Conn) {
 				break
 			}
 			fmt.Println("websocket receive ==>> ", time.Now().Format("[2006-01-02 15:04:05]"), " ", msgType, strings.TrimSpace(string(data)))
+
+			dst := make([]byte, hex.DecodedLen(len(data)))
+			hex.Decode(dst, data)
+
 			// send msg to device
 			for _, v := range *tcpMap {
 				if v != nil {
-					v.Write(data)
+					v.Write(dst)
 				}
 			}
 		}
