@@ -4,23 +4,39 @@ import (
 	"bufio"
 	"encoding/hex"
 	"fmt"
+	"github.com/gorilla/websocket"
+	client "github.com/influxdata/influxdb1-client"
+	uuid "github.com/satori/go.uuid"
 	"math/rand"
 	"net"
 	"net/http"
 	"strings"
 	"tcp-server/influxd"
 	"time"
-	client "github.com/influxdata/influxdb1-client"
-	"github.com/gorilla/websocket"
-	uuid "github.com/satori/go.uuid"
 )
 
 func main() {
-
 	influxd.Init()
 
-	PORT := ":9001"
-	l, err := net.Listen("tcp4", PORT)
+	done := make(chan bool)
+	go func() {
+		startPort := 10001
+		for i := 0; i < 30; i++ {
+			tcpPort := startPort + i
+			go StartWsTcp(tcpPort)
+		}
+		done <- true
+	}()
+
+	<-done
+	http.ListenAndServe(":9002", nil)
+}
+
+func StartWsTcp(tcpPort int)  {
+	tcpPortStr := fmt.Sprint(":",tcpPort)
+	fmt.Println("listen ==>",tcpPortStr)
+
+	l, err := net.Listen("tcp4", tcpPortStr)
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -32,7 +48,7 @@ func main() {
 	tcpMap := make(map[string]net.Conn)
 
 	// websocket server
-	go httpStart(&wbMap,&tcpMap)
+	go httpStart(tcpPort,&wbMap,&tcpMap)
 
 	for {
 		c, err := l.Accept()
@@ -40,18 +56,16 @@ func main() {
 			fmt.Println(err)
 			return
 		}
-		go handleConnection(c, &wbMap,&tcpMap)
+		go handleConnection(tcpPortStr,c, &wbMap,&tcpMap)
 	}
 }
 
-func handleConnection(c net.Conn, wbMap *map[string]*websocket.Conn,tcpMap *map[string]net.Conn) {
-	fmt.Printf("Serving %s\n", c.RemoteAddr().String())
 
+func handleConnection(port string,c net.Conn, wbMap *map[string]*websocket.Conn,tcpMap *map[string]net.Conn) {
 	// add tcp socket conn to list
 	v4, _ := uuid.NewV4()
 	key := v4.String()
 	(*tcpMap)[key] = c
-
 
 	con := influxd.GetInfluxCli()
 
@@ -61,7 +75,7 @@ func handleConnection(c net.Conn, wbMap *map[string]*websocket.Conn,tcpMap *map[
 		lengthPer, err := bufio.NewReader(c).Read(buf)
 		buf = buf[:lengthPer]
 		temp := strings.TrimSpace(string(buf))
-		fmt.Println("tcp receive ==>> ", time.Now().Format("[2006-01-02 15:04:05]"), " ", "hex==> ", hex.EncodeToString(buf), " ", "string ==>>", temp)
+		fmt.Println("data from tcp socket", port, "  ",time.Now().Format("[2006-01-02 15:04:05]"), " ", "hex==> ", hex.EncodeToString(buf), " ", "string ==>>", temp)
 
 		dst := make([]byte, hex.EncodedLen(len(buf)))
 		hex.Encode(dst, buf)
@@ -109,8 +123,8 @@ func handleConnection(c net.Conn, wbMap *map[string]*websocket.Conn,tcpMap *map[
 	delete(*tcpMap, key)
 }
 
-func httpStart(wbMap *map[string]*websocket.Conn,tcpMap *map[string]net.Conn) {
-	http.HandleFunc("/websocket", func(w http.ResponseWriter, r *http.Request) {
+func httpStart(port int,wbMap *map[string]*websocket.Conn,tcpMap *map[string]net.Conn) {
+	http.HandleFunc(fmt.Sprint("/websocket","/",port), func(w http.ResponseWriter, r *http.Request) {
 		var upgrader = websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool {
 				return true
@@ -138,7 +152,7 @@ func httpStart(wbMap *map[string]*websocket.Conn,tcpMap *map[string]net.Conn) {
 				}
 				break
 			}
-			fmt.Println("websocket receive ==>> ", time.Now().Format("[2006-01-02 15:04:05]"), " ", msgType, strings.TrimSpace(string(data)))
+			fmt.Println("data from websocket ",port," >> ", time.Now().Format("[2006-01-02 15:04:05]"), " ", msgType, strings.TrimSpace(string(data)))
 
 			dst := make([]byte, hex.DecodedLen(len(data)))
 			hex.Decode(dst, data)
@@ -152,6 +166,4 @@ func httpStart(wbMap *map[string]*websocket.Conn,tcpMap *map[string]net.Conn) {
 		}
 
 	})
-
-	http.ListenAndServe(":9002", nil)
 }

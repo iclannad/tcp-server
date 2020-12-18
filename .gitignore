@@ -28,3 +28,5 @@ go.sum
 
 # Self
 bin/
+
+.vscode/settings.json
